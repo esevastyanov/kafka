@@ -18,11 +18,11 @@ package kafka.coordinator.transaction
 
 import java.nio.charset.StandardCharsets
 
-import kafka.common.KafkaException
-import kafka.utils.{Json, Logging, ZkUtils}
-import kafka.zk.KafkaZkClient
+import kafka.utils.{Json, Logging}
+import kafka.zk.{KafkaZkClient, ProducerIdBlockZNode}
+import org.apache.kafka.common.KafkaException
 
-import scala.collection.JavaConverters._
+import scala.jdk.CollectionConverters._
 
 /**
  * ProducerIdManager is the part of the transaction coordinator that provides ProducerIds in a unique way
@@ -87,7 +87,7 @@ class ProducerIdManager(val brokerId: Int, val zkClient: KafkaZkClient) extends 
     var zkWriteComplete = false
     while (!zkWriteComplete) {
       // refresh current producerId block from zookeeper again
-      val (dataOpt, zkVersion) = zkClient.getDataAndVersion(ZkUtils.ProducerIdBlockPath)
+      val (dataOpt, zkVersion) = zkClient.getDataAndVersion(ProducerIdBlockZNode.path)
 
       // generate the new producerId block
       currentProducerIdBlock = dataOpt match {
@@ -110,7 +110,7 @@ class ProducerIdManager(val brokerId: Int, val zkClient: KafkaZkClient) extends 
       val newProducerIdBlockData = ProducerIdManager.generateProducerIdBlockJson(currentProducerIdBlock)
 
       // try to write the new producerId block into zookeeper
-      val (succeeded, version) = zkClient.conditionalUpdatePath(ZkUtils.ProducerIdBlockPath,
+      val (succeeded, version) = zkClient.conditionalUpdatePath(ProducerIdBlockZNode.path,
         newProducerIdBlockData, zkVersion, Some(checkProducerIdBlockZkData))
       zkWriteComplete = succeeded
 
@@ -122,7 +122,7 @@ class ProducerIdManager(val brokerId: Int, val zkClient: KafkaZkClient) extends 
   private def checkProducerIdBlockZkData(zkClient: KafkaZkClient, path: String, expectedData: Array[Byte]): (Boolean, Int) = {
     try {
       val expectedPidBlock = ProducerIdManager.parseProducerIdBlockData(expectedData)
-      zkClient.getDataAndVersion(ZkUtils.ProducerIdBlockPath) match {
+      zkClient.getDataAndVersion(ProducerIdBlockZNode.path) match {
         case (Some(data), zkVersion) =>
           val currProducerIdBLock = ProducerIdManager.parseProducerIdBlockData(data)
           (currProducerIdBLock == expectedPidBlock, zkVersion)
@@ -150,7 +150,7 @@ class ProducerIdManager(val brokerId: Int, val zkClient: KafkaZkClient) extends 
     }
   }
 
-  def shutdown() {
+  def shutdown(): Unit = {
     info(s"Shutdown complete: last producerId assigned $nextProducerId")
   }
 }
